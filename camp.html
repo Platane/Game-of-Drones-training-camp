@@ -11,7 +11,18 @@ var options={
 	'players number' : 2,
 	'drones number'  : 3,
 	'zones number'   : 2,
+
+
 	'zones positions' : null,
+
+	/* 
+	// exemple :
+	'zones positions' : [
+		{x: 500 , y : 1000},
+		{x: 1500 , y : 1500},
+	]
+	*/
+
 }
 </script>
 
@@ -21,10 +32,13 @@ window.onload=function(){
 	var w=4000,h=1800,droneSpeed=100;
 
 	//useful fn
-	var distance=function(a,b){
+	var squareDistance=function(a,b){
 		var x = a.x-b.x,
 			y = a.y-b.y
-		return Math.sqrt(x*x+y*y)
+		return x*x+y*y
+	}
+	var distance=function(a,b){
+		return Math.sqrt( squareDistance(a,b) );
 	}
 	var encodeInit=function( players , zones ){
 		var s = [
@@ -77,11 +91,13 @@ window.onload=function(){
 
 			var k = zones[i].ownance 
 			ctx.fillStyle = k==null ? '#ccc' : '#'+('468464AB46C4B4684AF3D84614848BCD').substr(k*6,6);
-			
+			ctx.globalAlpha = 0.5
 
 			ctx.beginPath();
 			ctx.arc( zones[i].x * ratio , zones[i].y * ratio , 100 * ratio , 0 , 6.28 )
 			ctx.fill()
+
+			ctx.globalAlpha = 1
 		}
 	}
 	var drawDrones = function( players ){
@@ -114,39 +130,96 @@ window.onload=function(){
 		drawDrones( players );
 	}
 
-		// init zone
-	var zones = [];
-	if( options['zones positions'] ){
-		zones = options['zones positions'];
-	}else{
-		for(var k=Math.min( 12 , options['zones number'] || 3 );k--;){
 
-			var accept = false;
-			while( !accept ){
-				var p={
-					x:Math.floor(Math.random()* (w-200) + 100 ),
-					y:Math.floor(Math.random()* (h-200) + 100 )
+	// zone class
+	var Zone= function( x , y ){
+		this.x = x;
+		this.y = y;
+		this.ownance = null;
+	}
+	Zone.prototype={
+		recomputeOwnance : function(players){
+			
+			// search the two players that have the most drones on the zone
+
+			// m1 the largest number of drones, m2 the second, k1 the number of the player that have the larget number of drones
+			var m1=0,m2=0,k1=0;
+			for(var k=players.length;k--;){
+				var nDrones = 0;
+				for( var i = players[k].drones.length;i--;)
+					if( squareDistance( players[k].drones[i] , this ) < 10000 )
+						nDrones ++;
+				if( nDrones >= m1 ){
+					m2 = m1;
+					m1 = nDrones;
+					k1 = k
+				}else if( nDrones >= m2 ){
+					m2 = nDrones;
 				}
-				accept = true;
-				for( var i=zones.length;i--;)
-					if( distance(p,zones[i]) < 200 && !(accept=false) )
-						break;
 			}
 
-			zones.push( p );
+			// change ownance only if there is at least one drone more that the second largest opponant
+			if( m1 > m2 )
+				this.ownance = k1
 		}
+	}
+
+	//// init zone
+	var zones = [];
+
+	// if a zone is too close to another one, found another location
+	for(var k=Math.min( 12 , options['zones number'] || 3 );k--;){
+
+		var accept = false,p;
+
+		// grab the position passed in option if exist
+		if( options['zones positions'] && options['zones positions'][ zones.length] ){
+			p = options['zones positions'][ zones.length]
+			accept = true;
+		}
+
+		while( !accept ){
+			p={
+				x:Math.floor(Math.random()* (w-200) + 100 ),
+				y:Math.floor(Math.random()* (h-200) + 100 )
+			}
+			accept = true;
+			for( var i=zones.length;i--;)
+				if( distance(p,zones[i]) < 200 && !(accept=false) )
+					break;
+		}
+
+		zones.push( new Zone(p.x,p.y) );
 	}
 	
 
-	// init players
-	var players = [];
+	// player class, call the behavior function IArun each fram
+	var IAplayer = function( players , zones ){
+		this.drones = [];
+		this.players = players;
+		this.zones = zones;
+	}
+	IAplayer.prototype={
 
-	players.push({
-		drones : [],
+		// wrap the IA run function
+		// define the I/O function for the init session
+		init : function( callback ){
+			var k=0;
+			var inBuffer=encodeInit(this.players,this.zones).split('\n');
+			readline=function(){
+				return inBuffer[k++];
+			}
+			this.initIA();
+
+			return callback();
+		},
+
+		// wrap the IA run function
+		// define the I/O function for the run session
 		run : function( callback ){
 
 			var k=0;
-			var inBuffer=encodeInput(players).split('\n');
+			var inBuffer=encodeInput(this.players).split('\n');
 			var outBuffer='';
 			readline=function(){
 				return inBuffer[k++];
@@ -156,87 +229,135 @@ window.onload=function(){
 			}
 
 			// IA goes here
-			run()
+			this.runIA()
 
 			readOutput( this , outBuffer )
 
-			callback();
+			return callback();
 		},
-	})
+	}
+
+	// pause the game each frame, relaunch it with the space bar, allow to modify the destination of the drones
+	var MouseControledPlayer = function( players , zones ){
+		this.drones = [];
+		this.players = players;
+		this.zones = zones;
+	}
+	MouseControledPlayer.prototype={
+
+		// wrap the IA run function
+		// define the I/O function for the init session
+		init : function( callback ){
+			return callback();
+		},
+
+		// wrap the IA run function
+		// define the I/O function for the run session
+		run : function( callback ){
+
+			var dragged = null;
+
+			var drones = this.drones;
+			var players = this.players;
+
+			var detectDrag = function( event ){
+
+				var p = {
+					x : event.pageX / ratio,
+					y : event.pageY / ratio
+				}
+
+				for(var i=drones.length;i--;)
+					if( distance(p,drones[i]) < 30 || distance(p,drones[i].dst) < 30 ){
+						dragged = i;
+						canvas.onmousemove= drag;
+						canvas.onmouseup= endDrag;
+
+						return;
+					}
+			}
+
+			var drag = function( event ){
+
+				var p = {
+					x : event.pageX / ratio,
+					y : event.pageY / ratio
+				}
+
+				drones[ dragged ].dst = p;
+
+				render( players , zones );
+			}
+
+			var endDrag = function( event ){
+
+				drag( event )
+
+
+				dragged = null;
+				canvas.onmousemove= null;
+				canvas.onmouseup= null;
+			}
+
+			canvas.onmousedown=detectDrag
+
+			document.onkeydown=function(event){
+				// react to space and enter key
+				switch(event.which){
+					case 32 :
+					case 13 :
+						dragged = null;
+						canvas.onmousemove=null;
+						canvas.onmouseup=null;
+						canvas.onmousedown=null;
+						document.onkeydown=null;
+
+						callback();
+				}
+			}
+		},
+	}
+
+	// move method in common to the two classes
+	IAplayer.prototype.moveDrones = MouseControledPlayer.prototype.moveDrones = function(){
+		for(var i=this.drones.length;i--;){
+			var d=this.drones[i];
+			var v={
+				x:d.dst.x - d.x,
+				y:d.dst.y - d.y
+			}
+			var l = Math.sqrt(v.x*v.x+v.y*v.y)
+
+			if( l > 100 ){
+				v.x *= 100/l
+				v.y *= 100/l
+			}
+
+			d.x+=v.x
+			d.y+=v.y
+		}
+	}
+
+
+	//// init player array
+	var players = [];
+
+	// push the player controled by the IA
+	players.push( new IAplayer( players, zones ) )
+	players[0].runIA = run;
+	players[0].initIA = init;
+
 
 	// init the players played by click
 	while( players.length < Math.min( 4 , options['players number'] || 2 ) )
-		players.push({
-			drones : [],
-			run : function( callback ){
-
-				var dragged = null;
-
-				var drones = this.drones;
-
-				var detectDrag = function( event ){
-
-					var p = {
-						x : event.pageX / ratio,
-						y : event.pageY / ratio
-					}
-
-					for(var i=drones.length;i--;)
-						if( distance(p,drones[i]) < 50 ){
-							dragged = i;
-							canvas.onmousemove= drag;
-							canvas.onmouseup= endDrag;
-
-							return;
-						}
-				}
-
-				var drag = function( event ){
-
-					var p = {
-						x : event.pageX / ratio,
-						y : event.pageY / ratio
-					}
-
-					drones[ dragged ].dst = p;
-
-					render( players , zones );
-				}
-
-				var endDrag = function( event ){
-
-					drag( event )
-
-
-					dragged = null;
-					canvas.onmousemove= null;
-					canvas.onmouseup= null;
-				}
-
-				canvas.onmousedown=detectDrag
-
-				document.onkeydown=function(event){
-					if(event.which != 32 )
-						return
-
-					dragged = null;
-					canvas.onmousemove= null;
-					canvas.onmouseup= null;
-					canvas.onmousedown=null;
-					document.onkeydown = null;
-
-					callback();
-					
-				}
-
-
-			},
-		})
+		players.push( new MouseControledPlayer( players, zones ) )
 
 
 	// add drones
 	for( var j= Math.min( 25 , options['drones number'] || 4 );j--; ){
 		
+		// random the position
+		// if the position is too close to a zone, retry
 		var accept = false,p;
 		while( !accept ){
 			p={
@@ -249,6 +370,7 @@ window.onload=function(){
 					break;
 		}
 
+		// every player should get a drone at the position, for starting
 		for(var k=players.length;k--;)
 			players[k].drones.push({
 				x:p.x,
@@ -260,14 +382,9 @@ window.onload=function(){
 			})
 	}
 
+
 	render( players , zones );
 
-	var k=0;
-	var inBuffer=encodeInit(players,zones).split('\n');
-	readline=function(){
-		return inBuffer[k++];
-	}
-	init();
 
 
 	var cycle = function(){
@@ -277,54 +394,13 @@ window.onload=function(){
 
 		var doCycle=function(){
 
-			// reset zones
-			for(var i=zones.length;i--;){
-				zones[i].on=[]
-				for(var k=players.length;k--;)
-					zones[i].on.push(0)
-			}
-
 			// move drones
 			for(var k=players.length;k--;)
-				for(var i=players[k].drones.length;i--;){
-					var d = players[k].drones[i]
-					var v={
-						x:d.dst.x - d.x,
-						y:d.dst.y - d.y
-					}
-					var l = Math.sqrt(v.x*v.x+v.y*v.y)
-
-					if( l > 100 ){
-						v.x *= 100/l
-						v.y *= 100/l
-					}
-
-					d.x+=v.x
-					d.y+=v.y
-
-					//is it in a zone?
-					for(var j=zones.length;j--;)
-						if( distance(d,zones[j]) < 100 )
-							zones[j].on[k] ++
-				}
+				players[k].moveDrones();
 
 			// compute ownance
-			for(var i=zones.length;i--;){
-				var m=0;
-				for(var k=players.length;k--;)
-					if( zones[i].on[k] > zones[i].on[m] )
-						m=k;
-
-				var maxPlusOne=true;
-
-				for(var k=players.length;k--;)
-					if( m != k && zones[i].on[k] == zones[i].on[m] )
-						maxPlusOne= false;
-
-				if( maxPlusOne )
-					zones[i].ownance = m;
-			}
-
+			for(var k=zones.length;k--;)
+				zones[k].recomputeOwnance( players )
 
 			render( players , zones );
 
@@ -339,7 +415,7 @@ window.onload=function(){
 		}
 
 		players[0].run( playerFinish )
-	}
+	};
 
 	cycle();
 };
