@@ -1,0 +1,372 @@
+<html>
+<style>
+body{
+	margin:0;
+}
+</style>
+<canvas></canvas>
+
+<script>
+var options={
+	'players number' : 2,
+	'drones number'  : 3,
+	'zones number'   : 2,
+	'zones positions' : null,
+}
+</script>
+
+<script>
+window.onload=function(){
+
+	var w=4000,h=1800,droneSpeed=100;
+
+	//useful fn
+	var distance=function(a,b){
+		var x = a.x-b.x,
+			y = a.y-b.y
+		return Math.sqrt(x*x+y*y)
+	}
+	var encodeInit=function( players , zones ){
+		var s = [
+			players.length,
+			0,
+			players[0].drones.length,
+			zones.length
+		]
+
+		for(var k=0;k<zones.length;k++)
+			s = s.concat( zones[k].x+' '+zones[k].y )
+
+		return s.join('\n');
+	}
+	var encodeInput=function( players ){
+		var s ='';
+		for(var k=0;k<players.length;k++)
+			for(var i=0;i<players[k].drones.length;i++)
+				s += players[k].drones[i].x + ' ' + players[k].drones[i].y +'\n'
+
+		return s;
+	}
+	var readOutput=function( player , s ){
+
+		var ls = s.split('\n');
+
+		for( var i=0;i<player.drones.length;i++){
+
+			var l=ls[i].split(' ')
+
+			player.drones[i].dst.x = parseInt( l[0] )
+			player.drones[i].dst.y = parseInt( l[1] )
+		}
+	}
+
+	//grab the canvas
+	var canvas=document.getElementsByTagName('canvas')[0];
+	canvas.width=window.innerWidth;
+	canvas.height=window.innerHeight;
+	var ctx = canvas.getContext('2d')
+	
+
+	var ratio = Math.min( canvas.width / w , canvas.height / h )
+
+	// draw fn
+	var drawZones = function( zones ){
+
+
+		for(var i=zones.length;i--;){
+
+			var k = zones[i].ownance 
+			ctx.fillStyle = k==null ? '#ccc' : '#'+('468464AB46C4B4684AF3D84614848BCD').substr(k*6,6);
+			
+
+			ctx.beginPath();
+			ctx.arc( zones[i].x * ratio , zones[i].y * ratio , 100 * ratio , 0 , 6.28 )
+			ctx.fill()
+		}
+	}
+	var drawDrones = function( players ){
+
+		for(var k=players.length;k--;){
+			var drones = players[k].drones;
+			for(var i=drones.length;i--;){
+				
+				ctx.strokeStyle = ctx.fillStyle = '#'+('468464AB46C4B4684AF3D84614848BCD').substr(k*6,6);
+				
+				ctx.lineWidth =1
+				ctx.beginPath();
+				ctx.moveTo( drones[i].x * ratio , drones[i].y * ratio )
+				ctx.lineTo( drones[i].dst.x * ratio , drones[i].dst.y * ratio)
+				ctx.stroke()
+
+				ctx.strokeStyle = '#999'
+				ctx.lineWidth = 3
+				ctx.beginPath();
+				ctx.arc( drones[i].x * ratio , drones[i].y * ratio , 6 , 0 , 6.28 )
+				ctx.fill()
+				ctx.stroke()
+				
+			}
+		}
+	}
+	var render = function( players , zones ){
+		ctx.clearRect(0,0,9999,9999)
+		drawZones( zones );
+		drawDrones( players );
+	}
+
+		// init zone
+	var zones = [];
+	if( options['zones positions'] ){
+		zones = options['zones positions'];
+	}else{
+		for(var k=Math.min( 12 , options['zones number'] || 3 );k--;){
+
+			var accept = false;
+			while( !accept ){
+				var p={
+					x:Math.floor(Math.random()* (w-200) + 100 ),
+					y:Math.floor(Math.random()* (h-200) + 100 )
+				}
+				accept = true;
+				for( var i=zones.length;i--;)
+					if( distance(p,zones[i]) < 200 && !(accept=false) )
+						break;
+			}
+
+			zones.push( p );
+		}
+	}
+	
+
+	// init players
+	var players = [];
+
+	players.push({
+		drones : [],
+		run : function( callback ){
+
+			var k=0;
+			var inBuffer=encodeInput(players).split('\n');
+			var outBuffer='';
+			readline=function(){
+				return inBuffer[k++];
+			}
+			print=function( s ){
+				outBuffer+=s+'\n';
+			}
+
+			// IA goes here
+			run()
+
+			readOutput( this , outBuffer )
+
+			callback();
+		},
+	})
+
+	// init the players played by click
+	while( players.length < Math.min( 4 , options['players number'] || 2 ) )
+		players.push({
+			drones : [],
+			run : function( callback ){
+
+				var dragged = null;
+
+				var drones = this.drones;
+
+				var detectDrag = function( event ){
+
+					var p = {
+						x : event.pageX / ratio,
+						y : event.pageY / ratio
+					}
+
+					for(var i=drones.length;i--;)
+						if( distance(p,drones[i]) < 50 ){
+							dragged = i;
+							canvas.onmousemove= drag;
+							canvas.onmouseup= endDrag;
+
+							return;
+						}
+				}
+
+				var drag = function( event ){
+
+					var p = {
+						x : event.pageX / ratio,
+						y : event.pageY / ratio
+					}
+
+					drones[ dragged ].dst = p;
+
+					render( players , zones );
+				}
+
+				var endDrag = function( event ){
+
+					drag( event )
+
+
+					dragged = null;
+					canvas.onmousemove= null;
+					canvas.onmouseup= null;
+				}
+
+				canvas.onmousedown=detectDrag
+
+				document.onkeydown=function(event){
+					if(event.which != 32 )
+						return
+
+					dragged = null;
+					canvas.onmousemove= null;
+					canvas.onmouseup= null;
+					canvas.onmousedown=null;
+					document.onkeydown = null;
+
+					callback();
+					
+				}
+
+
+			},
+		})
+
+
+	// add drones
+	for( var j= Math.min( 25 , options['drones number'] || 4 );j--; ){
+		
+		var accept = false,p;
+		while( !accept ){
+			p={
+				x:Math.floor(Math.random()* (w-200) + 100 ),
+				y:Math.floor(Math.random()* (h-200) + 100 )
+			}
+			accept = true;
+			for( var i=zones.length;i--;)
+				if( distance(p,zones[i]) < 100 && !(accept=false) )
+					break;
+		}
+
+		for(var k=players.length;k--;)
+			players[k].drones.push({
+				x:p.x,
+				y:p.y,
+				dst:{
+					x:p.x,
+					y:p.y,
+				},
+			})
+	}
+
+	render( players , zones );
+
+	var k=0;
+	var inBuffer=encodeInit(players,zones).split('\n');
+	readline=function(){
+		return inBuffer[k++];
+	}
+	init();
+
+
+	var cycle = function(){
+
+		// wait for all players
+		var k=0;
+
+		var doCycle=function(){
+
+			// reset zones
+			for(var i=zones.length;i--;){
+				zones[i].on=[]
+				for(var k=players.length;k--;)
+					zones[i].on.push(0)
+			}
+
+			// move drones
+			for(var k=players.length;k--;)
+				for(var i=players[k].drones.length;i--;){
+					var d = players[k].drones[i]
+					var v={
+						x:d.dst.x - d.x,
+						y:d.dst.y - d.y
+					}
+					var l = Math.sqrt(v.x*v.x+v.y*v.y)
+
+					if( l > 100 ){
+						v.x *= 100/l
+						v.y *= 100/l
+					}
+
+					d.x+=v.x
+					d.y+=v.y
+
+					//is it in a zone?
+					for(var j=zones.length;j--;)
+						if( distance(d,zones[j]) < 100 )
+							zones[j].on[k] ++
+				}
+
+			// compute ownance
+			for(var i=zones.length;i--;){
+				var m=0;
+				for(var k=players.length;k--;)
+					if( zones[i].on[k] > zones[i].on[m] )
+						m=k;
+
+				var maxPlusOne=true;
+
+				for(var k=players.length;k--;)
+					if( m != k && zones[i].on[k] == zones[i].on[m] )
+						maxPlusOne= false;
+
+				if( maxPlusOne )
+					zones[i].ownance = m;
+			}
+
+
+			render( players , zones );
+
+			cycle();
+		}
+
+		var playerFinish=function(){
+			if( k >= players.length )
+				doCycle();
+			else
+				players[k++].run( playerFinish )
+		}
+
+		players[0].run( playerFinish )
+	}
+
+	cycle();
+};
+
+</script>
+
+
+<script>
+var init,run;
+
+(function(){
+
+	///some vars declaration
+
+
+	///init function
+	init = function(){
+
+	}
+
+	///run function
+	run = function(){
+		print("0 0")
+		print("0 0")
+		print("0 0")
+	}
+
+
+})()
+</script>
