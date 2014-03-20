@@ -12,16 +12,24 @@ var options={
 	'drones number'  : 3,
 	'zones number'   : 2,
 
+	//'drones positions' : null,
+	'drones positions' : [
+		{x: 500 , y : 1000},
+		{x: 1500 , y : 1500},
+		{x: 1800 , y : 1300},
 
-	'zones positions' : null,
+		{x: 150 , y : 1000},
+		{x: 1200 , y : 800},
+		{x: 1300 , y : 1300},
+	],
 
-	/* 
-	// exemple :
+	//'zones positions' : null,
+
 	'zones positions' : [
 		{x: 500 , y : 1000},
 		{x: 1500 , y : 1500},
-	]
-	*/
+	],
+	
 
 }
 </script>
@@ -51,7 +59,7 @@ window.onload=function(){
 	var encodeInput=function( players , zones ){
 		var s ='';
 		for(var k=0;k<zones.length;k++)
-			s+=zones[k].ownance+'\n'
+			s+= ( zones[k].ownance == null ? -1 : zones[k].ownance ) +'\n'
 
 		for(var k=0;k<players.length;k++)
 			for(var i=0;i<players[k].drones.length;i++)
@@ -241,12 +249,11 @@ window.onload=function(){
 	}
 	MouseControledPlayer.prototype={
 
-		// wrap the IA run function
-		// define the I/O function for the init session
+		// do nothing
 		init : function(  ){},
 
-		// wrap the IA run function
-		// define the I/O function for the run session
+		// bind event to dom elements
+		// callback when the user press space or enter
 		run : function( callback ){
 
 			var dragged = null;
@@ -262,7 +269,7 @@ window.onload=function(){
 				}
 
 				for(var i=drones.length;i--;)
-					if( distance(p,drones[i]) < 30 || distance(p,drones[i].dst) < 30 ){
+					if( distance(p,drones[i]) < 40 || distance(p,drones[i].dst) < 40 ){
 						dragged = i;
 						canvas.onmousemove= drag;
 						canvas.onmouseup= endDrag;
@@ -348,11 +355,27 @@ window.onload=function(){
 
 
 	// add drones
-	for( var j= Math.min( 25 , options['drones number'] || 4 );j--; ){
+
+	// grab the position passed in option if exist
+	var ndrones = Math.min( 25 , options['drones number'] || 4 )
+	if( options['drones positions'] && options['drones positions'].length == players.length * ndrones )
+			for(var k=0;k<players.length;k++)
+				for(var i=0;i<ndrones;i++)
+					players[k].drones.push({
+						x:options['drones positions'][k*ndrones+i].x,
+						y:options['drones positions'][k*ndrones+i].y,
+						dst:{
+							x:options['drones positions'][k*ndrones+i].x,
+							y:options['drones positions'][k*ndrones+i].y,
+						},
+					})
+	else
+	for( var j= ndrones;j--; ){
 		
 		// random the position
 		// if the position is too close to a zone, retry
 		var accept = false,p;
+
 		while( !accept ){
 			p={
 				x:Math.floor(Math.random()* (w-200) + 100 ),
@@ -397,6 +420,7 @@ window.onload=function(){
 			for(var k=zones.length;k--;)
 				zones[k].recomputeOwnance( players )
 
+			// redraw the scene
 			render( players , zones );
 
 			cycle();
@@ -405,11 +429,13 @@ window.onload=function(){
 		var playerFinish=function(){
 			if( k >= players.length )
 				doCycle();
-			else
+			else{
 				players[k++].run( playerFinish )
+				render( players , zones );
+			}
 		}
 
-		players[0].run( playerFinish )
+		players[k++].run( playerFinish )
 	};
 
 	cycle();
@@ -441,4 +467,4 @@ var init,run;
 
 })()
 </script>
-<!-- <script type="text/javascript" src="mySolution.js"></script> -->
+<script type="text/javascript" src="mySolution.js"></script>
