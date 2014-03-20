@@ -41,20 +41,18 @@ window.onload=function(){
 		return Math.sqrt( squareDistance(a,b) );
 	}
 	var encodeInit=function( players , zones ){
-		var s = [
-			players.length,
-			0,
-			players[0].drones.length,
-			zones.length
-		]
+		var s = players.length+" 0 "+players[0].drones.length+" "+zones.length+"\n";
 
 		for(var k=0;k<zones.length;k++)
-			s = s.concat( zones[k].x+' '+zones[k].y )
+			s += zones[k].x+' '+zones[k].y+'\n'
 
-		return s.join('\n');
+		return s;
 	}
-	var encodeInput=function( players ){
+	var encodeInput=function( players , zones ){
 		var s ='';
+		for(var k=0;k<zones.length;k++)
+			s+=zones[k].ownance+'\n'
+
 		for(var k=0;k<players.length;k++)
 			for(var i=0;i<players[k].drones.length;i++)
 				s += players[k].drones[i].x + ' ' + players[k].drones[i].y +'\n'
@@ -203,15 +201,13 @@ window.onload=function(){
 
 		// wrap the IA run function
 		// define the I/O function for the init session
-		init : function( callback ){
+		init : function(  ){
 			var k=0;
 			var inBuffer=encodeInit(this.players,this.zones).split('\n');
 			readline=function(){
 				return inBuffer[k++];
 			}
 			this.initIA();
-
-			return callback();
 		},
 
 		// wrap the IA run function
@@ -219,7 +215,7 @@ window.onload=function(){
 		run : function( callback ){
 
 			var k=0;
-			var inBuffer=encodeInput(this.players).split('\n');
+			var inBuffer=encodeInput(this.players,this.zones).split('\n');
 			var outBuffer='';
 			readline=function(){
 				return inBuffer[k++];
@@ -247,9 +243,7 @@ window.onload=function(){
 
 		// wrap the IA run function
 		// define the I/O function for the init session
-		init : function( callback ){
-			return callback();
-		},
+		init : function(  ){},
 
 		// wrap the IA run function
 		// define the I/O function for the run session
@@ -385,7 +379,8 @@ window.onload=function(){
 
 	render( players , zones );
 
-
+	for(var k=players.length;k--;)
+		players[k].init();
 
 	var cycle = function(){
 
@@ -446,3 +441,4 @@ var init,run;
 
 })()
 </script>
+<!-- <script type="text/javascript" src="mySolution.js"></script> -->
